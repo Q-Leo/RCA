@@ -1,0 +1,165 @@
+import json
+import os
+import sys
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+sys.setrecursionlimit(100000)
+
+
+class UnionSet:
+    def __init__(self, n):
+        self._root = [i for i in range(0, n)]
+        self.n_components = n
+
+    def iter_roots(self):
+        for i in range(len(self._root)):
+            if self._root[i] == i:
+                yield i
+
+    def find(self, a):
+        if a == self._root[a]:
+            return a
+
+        self._root[a] = self.find(self._root[a])
+        return self._root[a]
+
+    def merge(self, a, b):
+        x = self.find(a)
+        y = self.find(b)
+
+        if x == y:
+            return
+
+        self._root[x] = y
+        self.n_components -= 1
+
+
+def calc_similarity(a: str, b: str):
+    if a == b:
+        return 1.0
+
+    s_a = set(a)
+    s_b = set(b)
+    vec = s_a.union(s_b)
+
+    vec_a = np.array(list({x: 1 if x in s_a else 0 for x in vec}.values()))
+    vec_b = np.array(list({x: 1 if x in s_b else 0 for x in vec}.values()))
+
+    return vec_a.dot(vec_b.T) / np.linalg.norm(vec_a) / np.linalg.norm(vec_b)
+
+
+class TemplateScanner:
+    log_parse_similarity_threshold = 0.80
+
+    def __init__(self, tpl_source):
+        self._tpl_source = tpl_source
+        self._templates = []
+        self._log_parse_similarity_threshold = self.log_parse_similarity_threshold
+        self._source_log_entries = []
+        self._log_entries = []
+        self._template_freq = {}
+        self._freq_total = 0
+
+        path_templates_cache = '{}/.tpls'.format(tpl_source)
+        if not os.path.exists(path_templates_cache):
+            print('找不到缓存')
+            self._scan_tpl_source()
+            self._get_templates()
+            json.dump({
+                'info': self._templates,
+                'freq': self._template_freq
+            }, open(path_templates_cache, 'w'))
+        else:
+            print('从缓存加载日志模板')
+            cached = json.load(open(path_templates_cache, 'r'))
+            self._templates = [(name, index) for name, index in cached['info']]
+            self._template_freq = {int(index): freq for index, freq in cached['freq'].items()}
+
+        self._templates_dict = {index: name for name, index in self._templates}
+        for freq in self._template_freq.values():
+            self._freq_total += freq
+
+    def get_freq(self, tpl_id):
+        return self._template_freq[tpl_id] / self._freq_total
+
+    def _scan_tpl_source(self):
+        print('正在扫描日志...')
+        files = os.scandir(self._tpl_source)
+        for file in files:
+            df = pd.read_csv(file)
+            for index, event in df.iterrows():
+                log = event['triggername'].split(' ', 1)[1]
+                self._source_log_entries.append(log)
+
+    def get_message_by_template(self, tpl_id):
+        return self._templates_dict[tpl_id]
+
+    def _get_templates(self):
+        log_entries = self._source_log_entries
+
+        print('正在解析日志模板...')
+        cnt = len(log_entries)
+        components = UnionSet(cnt)
+
+        print('正在进行第一趟解析，根据重复项建立模板')
+        for entry_id_1 in tqdm(range(cnt)):
+            for entry_id_2 in range(cnt):
+                if entry_id_1 == entry_id_2:
+                    continue
+                if log_entries[entry_id_1] != log_entries[entry_id_2]:
+                    continue
+                components.merge(entry_id_1, entry_id_2)
+
+        print('正在进行第二趟解析，根据文本相似度大小进一步建立模板')
+        roots_list = list(components.iter_roots())
+        for root1 in tqdm(roots_list):
+            for root2 in roots_list:
+                if root1 == root2:
+                    continue
+                if calc_similarity(log_entries[root1], log_entries[root2]) > self._log_parse_similarity_threshold:
+                    components.merge(root1, root2)
+
+        index = 0
+        for root in components.iter_roots():
+            self._templates.append((log_entries[root], index))
+            self._template_freq[index] = 0
+            index += 1
+
+        print('正在统计出现频率')
+        for entry in tqdm(self._source_log_entries):
+            self._template_freq[self.get_template_id(entry)] += 1
+
+        print('发现{}个日志模板'.format(index))
+
+    def get_template_id(self, message):
+        for target_message, idx in self._templates:
+            if calc_similarity(target_message, message) > self.log_parse_similarity_threshold:
+                return idx
+
+    def init(self, log_file_path, root_cause_label=False):
+        self._log_entries = []
+        df = pd.read_csv(log_file_path)
+        for index, event in df.iterrows():
+            msg_raw = event['triggername'].split(' ', 1)
+            tmp = {
+                'node': int(msg_raw[0].split('_')[1]),
+                'message': msg_raw[1],
+                'template': self.get_template_id(msg_raw[1])
+            }
+            if root_cause_label:
+                tmp['is_root'] = int(event['is_root']) == 1
+            self._log_entries.append(tmp)
+
+    def get_logs(self):
+        return self._log_entries
+
+    def get_templates(self):
+        return self._templates
+
+
+if __name__ == '__main__':
+    tpl = TemplateScanner('../data/test')
+    print(tpl.init('../data/test/0.csv'))

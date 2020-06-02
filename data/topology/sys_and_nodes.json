@@ -1,0 +1,122 @@
+{
+  "SYS_1": [
+    "node_50",
+    "node_0",
+    "node_58",
+    "node_4",
+    "node_83",
+    "node_33",
+    "node_17",
+    "node_31",
+    "node_15",
+    "node_73",
+    "node_93"
+  ],
+  "SYS_2": [
+    "node_70",
+    "node_30",
+    "node_45",
+    "node_37",
+    "node_55",
+    "node_21",
+    "node_18",
+    "node_7",
+    "node_99",
+    "node_8",
+    "node_91"
+  ],
+  "SYS_3": [
+    "node_57",
+    "node_20",
+    "node_28",
+    "node_3",
+    "node_97",
+    "node_39",
+    "node_86",
+    "node_94"
+  ],
+  "SYS_4": [
+    "node_72",
+    "node_34",
+    "node_81",
+    "node_36",
+    "node_62",
+    "node_77",
+    "node_69",
+    "node_13",
+    "node_9",
+    "node_19",
+    "node_27",
+    "node_5"
+  ],
+  "SYS_5": [
+    "node_14",
+    "node_26",
+    "node_65",
+    "node_2",
+    "node_76",
+    "node_38",
+    "node_82",
+    "node_60",
+    "node_6",
+    "node_74",
+    "node_85"
+  ],
+  "SYS_6": [
+    "node_56",
+    "node_67",
+    "node_25",
+    "node_48",
+    "node_59",
+    "node_32",
+    "node_35",
+    "node_46",
+    "node_1",
+    "node_98"
+  ],
+  "SYS_7": [
+    "node_63",
+    "node_53",
+    "node_61",
+    "node_89",
+    "node_54",
+    "node_24",
+    "node_23",
+    "node_51"
+  ],
+  "SYS_8": [
+    "node_84",
+    "node_10",
+    "node_49",
+    "node_95",
+    "node_88",
+    "node_43",
+    "node_41",
+    "node_71",
+    "node_79",
+    "node_87"
+  ],
+  "SYS_9": [
+    "node_68",
+    "node_16",
+    "node_92",
+    "node_78",
+    "node_47",
+    "node_75",
+    "node_22",
+    "node_80",
+    "node_66",
+    "node_12",
+    "node_44"
+  ],
+  "SYS_10": [
+    "node_29",
+    "node_64",
+    "node_96",
+    "node_42",
+    "node_90",
+    "node_11",
+    "node_52",
+    "node_40"
+  ]
+}
