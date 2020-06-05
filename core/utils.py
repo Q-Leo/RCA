@@ -19,5 +19,5 @@ def echarts_from_nx(nx: nx.DiGraph, output_path, title):
         })
 
     graph = Graph(global_options.InitOpts(width='1920px', height='1080px'))
-    graph.add(title, nodes, links, repulsion=8000, edge_symbol=['arrow'])
+    graph.add(title, nodes, links, repulsion=8000, edge_symbol=['circle', 'arrow'])
     graph.render(output_path)
