@@ -1,9 +1,6 @@
 from collections import defaultdict
 from copy import deepcopy
 
-import networkx as nx
-from matplotlib import pyplot as plt
-
 from core.scanner import TemplateScanner
 from core.topology import Topology
 

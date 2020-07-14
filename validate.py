@@ -1,9 +1,11 @@
 import json
-from core.topology import Topology
-from core.scanner import TemplateScanner
-from core.clustering import Clustering
-from tqdm import tqdm
 import os
+
+from tqdm import tqdm
+
+from core.clustering import Clustering
+from core.scanner import TemplateScanner
+from core.topology import Topology
 
 if __name__ == '__main__':
     top = Topology('data/topology/topology_edges_node.json')
