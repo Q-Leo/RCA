@@ -10,16 +10,34 @@ sys.setrecursionlimit(100000)
 
 
 class UnionSet:
+    """
+    并查集实现类
+    """
+
     def __init__(self, n):
+        """
+        构造函数
+        :param n: 并查集内元素的个数
+        :return: 无
+        """
         self._root = [i for i in range(0, n)]
         self.n_components = n
 
     def iter_roots(self):
+        """
+        遍历所有根节点
+        :return: 一个Python Generator，表示所有根节点
+        """
         for i in range(len(self._root)):
             if self._root[i] == i:
                 yield i
 
     def find(self, a):
+        """
+        查找一个节点对应的根节点
+        :param a: 带查找的节点
+        :return: 对应的根节点
+        """
         if a == self._root[a]:
             return a
 
@@ -27,6 +45,12 @@ class UnionSet:
         return self._root[a]
 
     def merge(self, a, b):
+        """
+        合并两个集合
+        :param a: 集合1的代表节点
+        :param b: 集合2的代表节点
+        :return: 无
+        """
         x = self.find(a)
         y = self.find(b)
 
@@ -38,6 +62,13 @@ class UnionSet:
 
 
 def calc_similarity(a: str, b: str):
+    """
+    计算两个字符串的余弦相似度
+    :param a: 第一个字符串
+    :param b: 第二个字符串
+    :return: 余弦相似度的值
+    """
+
     if a == b:
         return 1.0
 
@@ -52,9 +83,19 @@ def calc_similarity(a: str, b: str):
 
 
 class TemplateScanner:
+    """
+    模板扫描器
+    """
+
+    # 相似度阈值
     log_parse_similarity_threshold = 0.80
 
     def __init__(self, tpl_source):
+        """
+        构造函数，加载日志模板配置，如果不存在缓存，则根据日志模板训练目录训练并生成日志模板配置文件，如果存在缓存则直接从缓存中加载
+        :param tpl_source: 日志模板训练目录
+        """
+
         self._tpl_source = tpl_source
         self._templates = []
         self._log_parse_similarity_threshold = self.log_parse_similarity_threshold
@@ -83,7 +124,66 @@ class TemplateScanner:
             self._freq_total += freq
 
     def get_freq(self, tpl_id):
+        """
+        获取某个日志模板分类ID出现的总频率
+        往往用于按照频率过滤噪声时
+        :param tpl_id: 日志模板分类ID
+        :return: 频率
+        """
+
         return self._template_freq[tpl_id] / self._freq_total
+
+    def get_message_by_template(self, tpl_id):
+        """
+        通过日志模板分类ID获取代表该分类的事件内容主体的文字信息（往往用于调试）
+        :param tpl_id: 日志模板分类ID
+        :return: 代表的文字信息
+        """
+        return self._templates_dict[tpl_id]
+
+    def get_template_id(self, message):
+        """
+        获取某个事件内容主体文字信息对应的日志模板分类ID
+        :param message: 事件内容主体文字信息
+        :return: 对应的日志模板分类id，如果不存在则返回None
+        """
+        for target_message, idx in self._templates:
+            if calc_similarity(target_message, message) > self.log_parse_similarity_threshold:
+                return idx
+
+    def init(self, log_file_path, root_cause_label=False):
+        """
+        初始化某一个训练/测试数据文件，该过程将该文件（csv）中的所有数据结构化，存储到self._log_entries中，通过get_logs获取
+        :param log_file_path: 日志文件路径
+        :param root_cause_label: 是否添加根因标记，对于训练数据需要添加，测试数据不需要（因为测试数据本来就要人为添加这个）
+        :return: 无
+        """
+        self._log_entries = []
+        df = pd.read_csv(log_file_path)
+        for index, event in df.iterrows():
+            msg_raw = event['triggername'].split(' ', 1)
+            tmp = {
+                'node': int(msg_raw[0].split('_')[1]),
+                'message': msg_raw[1],
+                'template': self.get_template_id(msg_raw[1])
+            }
+            if root_cause_label:
+                tmp['is_root'] = int(event['is_root']) == 1
+            self._log_entries.append(tmp)
+
+    def get_logs(self):
+        """
+        获取所有结构化的日志信息
+        :return: 结构化的日志信息
+        """
+        return self._log_entries
+
+    def get_templates(self):
+        """
+        获取所有日志模板
+        :return: 所有日志模板
+        """
+        return self._templates
 
     def _scan_tpl_source(self):
         print('正在扫描日志...')
@@ -93,9 +193,6 @@ class TemplateScanner:
             for index, event in df.iterrows():
                 log = event['triggername'].split(' ', 1)[1]
                 self._source_log_entries.append(log)
-
-    def get_message_by_template(self, tpl_id):
-        return self._templates_dict[tpl_id]
 
     def _get_templates(self):
         log_entries = self._source_log_entries
@@ -133,33 +230,3 @@ class TemplateScanner:
             self._template_freq[self.get_template_id(entry)] += 1
 
         print('发现{}个日志模板'.format(index))
-
-    def get_template_id(self, message):
-        for target_message, idx in self._templates:
-            if calc_similarity(target_message, message) > self.log_parse_similarity_threshold:
-                return idx
-
-    def init(self, log_file_path, root_cause_label=False):
-        self._log_entries = []
-        df = pd.read_csv(log_file_path)
-        for index, event in df.iterrows():
-            msg_raw = event['triggername'].split(' ', 1)
-            tmp = {
-                'node': int(msg_raw[0].split('_')[1]),
-                'message': msg_raw[1],
-                'template': self.get_template_id(msg_raw[1])
-            }
-            if root_cause_label:
-                tmp['is_root'] = int(event['is_root']) == 1
-            self._log_entries.append(tmp)
-
-    def get_logs(self):
-        return self._log_entries
-
-    def get_templates(self):
-        return self._templates
-
-
-if __name__ == '__main__':
-    tpl = TemplateScanner('../data/test')
-    print(tpl.init('../data/test/0.csv'))
