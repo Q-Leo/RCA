@@ -40,4 +40,6 @@ def locate():
         result['node'], total_time, result['message'], result['subgraph'], result['node_to_log_mapping'] = res
         result['subgraph'] = (list(result['subgraph'].nodes), list(result['subgraph'].edges))
 
+    os.remove(path)
+
     return make_response(jsonify(result))
