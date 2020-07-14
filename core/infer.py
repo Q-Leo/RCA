@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from core.clustering import Clustering
 from core.relationship import Relationship
 from core.scanner import TemplateScanner
@@ -26,6 +28,8 @@ class Infer:
         :param path: csv文件路径
         :return: 推理结果，一个元组(节点, 根因告警信息, 节点的局部拓扑子图)
         """
+
+        start_time = datetime.now()
 
         self._tpl.init(path)
         cl = Clustering(self._tpl, self._top)
@@ -70,4 +74,13 @@ class Infer:
 
         result.sort(key=lambda x: x[4] * x[1], reverse=True)
 
-        return result[0][0], result[0][2]['message'], cl.cluster_by_topology(result[0][0], lambda u, v: True, 3)
+        if len(result) == 0:
+            end_time = datetime.now()
+            return None, (1000 * (end_time - start_time).total_seconds())
+
+        around = cl.cluster_by_topology(result[0][0], lambda u, v: True, 3)
+
+        end_time = datetime.now()
+
+        return result[0][0], (1000 * (end_time - start_time).total_seconds()), result[0][2]['message'], around,\
+               {v: mapping[v] for v in around.nodes}

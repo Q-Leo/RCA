@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh" xmlns:v-bind="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8">
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/mdb.min.css') }}" rel="stylesheet">
+    <title>智能根因定位系统</title>
+    <style>
+        body {
+            background: url("{{ url_for('static', filename='img/bg.jpg') }}");
+            background-size: cover;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <nav class="navbar navbar-expand-lg navbar-dark primary-color-dark">
+        <a class="navbar-brand" href="#" @click="checkoutUploadView">智能根因定位系统</a>
+
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="navbarDropdownMenuLink" data-toggle="dropdown"
+                       aria-haspopup="true" aria-expanded="false">定位结果</a>
+                    <div class="dropdown-menu dropdown-primary" aria-labelledby="navbarDropdownMenuLink">
+                        {% raw %}
+                        <a class="dropdown-item" v-for="item in result" @click="changeInViewReport(item)">{{ item.file }}（{{ item.totalTime }}ms）</a>
+                        {% endraw %}
+                    </div>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" id="navbarDropdownMenuLink" data-toggle="dropdown"
+                       aria-haspopup="true" aria-expanded="false">导出</a>
+                    <div class="dropdown-menu dropdown-primary" aria-labelledby="navbarDropdownMenuLink">
+                        <a class="dropdown-item" @click="doExport(false)" href="#">导出结果集</a>
+                        <a class="dropdown-item" @click="doExport(true)" href="#">导出报告</a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    <div class="container">
+        <div class="card m-5" v-if="inView === SHOW_UPLOAD">
+            <div class="card-header">分析器</div>
+            <div class="card-body">
+                <div class="progress" v-if="running">
+                    <div class="progress-bar" role="progressbar"
+                         v-bind:style="{ width: (vCur / vMax) * 100 + '%' }"></div>
+                </div>
+                <div class="custom-file" v-if="!running">
+                    <input type="file" class="custom-file-input" lang="en" @change="batchUploadFile" multiple>
+                    <label class="custom-file-label" for="customFileLang">选择待分析的日志文件</label>
+                </div>
+            </div>
+            <div class="card-footer" v-if="!running">
+                <button type="submit" class="btn btn-danger" @click="runRca">开始根因定位</button>
+            </div>
+        </div>
+        <div class="card m-5" v-if="inView === SHOW_REPORT">
+            {% raw %}
+            <div class="card-header">根因定位报告：{{ inViewReport.file }}（定位时长：{{ inViewReport.totalTime }}ms）</div>
+            <div class="card-body">
+                <div v-if="inViewReport['hasRootCause']">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>根因节点</th>
+                                <th>根因事件</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>节点node_{{ inViewReport.node }}</td>
+                                <td>{{ inViewReport.message }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="height: 650px;" id="visualize">
+                    </div>
+                </div>
+                <div v-else>
+                    <h2>未检测出根因</h2>
+                </div>
+            </div>
+            {% endraw %}
+        </div>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/vue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mdb.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/echarts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/json2csv.js') }}"></script>
+<script>
+    const SHOW_UPLOAD = 1;
+    const SHOW_EXPORT = 2;
+    const SHOW_REPORT = 3;
+
+    let app = new Vue({
+        el: '#app',
+        data() {
+            return {
+                files: null,
+                running: false,
+                vMax: 100,
+                vCur: 0,
+                result: [],
+                inView: SHOW_UPLOAD,
+                inViewReport: {},
+                chart: null
+            }
+        },
+        watch: {
+            inView() {
+                if (this.inView !== SHOW_REPORT && this.chart != null) {
+                    this.chart.dispose();
+                    this.chart = null;
+                }
+            },
+
+            inViewReport() {
+                this.$nextTick().then(() => {
+                    if (!this.inViewReport['hasRootCause']) {
+                        return;
+                    }
+                    this.chart = echarts.init(document.getElementById('visualize'));
+                    this.chart.setOption({
+                        series: [{
+                            type: 'graph',
+                            layout: 'circular',
+                            edges: this.inViewReport['subgraph']['edges'].map(e => {
+                                return {
+                                    source: 'node_' + e[0],
+                                    target: 'node_' + e[1]
+                                }
+                            }),
+                            label: {
+                                show: true,
+                                position: 'right',
+                                formatter: param => {
+                                    let lst = ['{title|' + param.name + '}{abg|}'];
+                                    for (let log of param.data.logs) {
+                                        let str = '', cnt = 0;
+                                        for (let ch of log['message']) {
+                                            if (!(++cnt % 10)) {
+                                                str += '\n';
+                                            }
+                                            str += ch;
+                                        }
+                                        let isRoot = log['message'] === this.inViewReport.message && log['node'] === this.inViewReport.node;
+                                        lst.push('{' + (isRoot ? 'logRoot' : 'log') + '|' + str + '}');
+                                        lst.push('{hr|}');
+                                    }
+                                    return lst.join('\n')
+                                },
+                                backgroundColor: '#eee',
+                                borderColor: '#334277',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                rich: {
+                                    title: {
+                                        color: '#eee',
+                                        align: 'center'
+                                    },
+                                    abg: {
+                                        backgroundColor: '#334277',
+                                        width: '100%',
+                                        align: 'right',
+                                        height: 25,
+                                        borderRadius: [4, 4, 0, 0]
+                                    },
+                                    hr: {
+                                        borderColor: '#777',
+                                        width: '100%',
+                                        borderWidth: 0.5,
+                                        height: 0
+                                    },
+                                    log: {
+                                        width: 100,
+                                        padding: 4,
+                                        color: '#333'
+                                    },
+                                    logRoot: {
+                                        width: 100,
+                                        padding: 4,
+                                        color: '#ff0000'
+                                    }
+                                }
+                            },
+                            roam: true,
+                            edgeSymbol: ['arrow', 'none'],
+                            edgeSymbolSize: 15,
+                            itemStyle: {
+                                normal: {
+                                    color: param => {
+                                        return param.data.node === this.inViewReport['node'] ? '#ff0000' : '#334277'
+                                    }
+                                }
+                            },
+                            data: this.inViewReport['subgraph']['nodes'].map(e => {
+                                return {
+                                    id: 'node_' + e,
+                                    node: e,
+                                    name: 'node_' + e,
+                                    symbolSize: 20,
+                                    logs: this.inViewReport['nodeToLogMapping'][e]
+                                }
+                            }),
+                            force: {
+                                repulsion: 100,
+                            }
+                        }]
+                    });
+                });
+            }
+        },
+        methods: {
+            'runRca'() {
+                let len = this.files.length;
+                if (len === 0) {
+                    return;
+                }
+                this.vMax = len;
+                this.vCur = 0;
+                this.result = [];
+                let task = (cnt) => {
+                    if (cnt >= len) {
+                        this.running = false;
+                        this.inViewReport = this.result[0];
+                        this.inView = SHOW_REPORT;
+                        return
+                    }
+                    let formData = new FormData();
+                    formData.append('file', this.files[cnt]);
+                    $.ajax({
+                        url: '/locate/',
+                        type: 'POST',
+                        processData: false,
+                        contentType: false,
+                        data: formData,
+                        success: data => {
+                            this.vCur++;
+                            let tmp = {
+                                'file': this.files[cnt].name,
+                                'hasRootCause': data['has_root_cause'],
+                                'totalTime': data['total_time'].toFixed(3)
+                            };
+                            if (data['has_root_cause']) {
+                                tmp['node'] = data['node'];
+                                tmp['message'] = data['message'];
+                                tmp['subgraph'] = {
+                                    'nodes': data['subgraph'][0],
+                                    'edges': data['subgraph'][1]
+                                };
+                                tmp['nodeToLogMapping'] = data['node_to_log_mapping']
+                            }
+                            this.result.push(tmp);
+                            task(cnt + 1);
+                            console.log(cnt);
+                        }
+                    })
+                };
+                this.running = true;
+                task(0);
+            },
+
+            'batchUploadFile'(event) {
+                this.files = event.target.files;
+            },
+
+            changeInViewReport(report) {
+                this.inView = SHOW_REPORT;
+                this.inViewReport = report;
+            },
+
+            checkoutUploadView() {
+                this.inView = SHOW_UPLOAD;
+            },
+
+            doExport(isReport = false) {
+                let json = [];
+                for (let item of this.result) {
+                    if (!isReport) {
+                        json.push({
+                            'filename': item['file'].split('.')[0],
+                            'root_node': item['hasRootCause'] ? item['node'] : '0',
+                            'triggername': item['hasRootCause'] ? item['message'] : '0'
+                        })
+                    } else {
+                        json.push({
+                            '文件名': item['file'],
+                            '根因节点': item['hasRootCause'] ? item['node'] : '0',
+                            '消息内容': item['hasRootCause'] ? item['message'] : '0',
+                            '定位时长（ms）': item['totalTime']
+                        })
+                    }
+                }
+                let csv = json2csv.parse(json, {
+                    fields: !isReport ? ['filename', 'root_node', 'triggername'] : [
+                        '文件名',
+                        '根因节点',
+                        '消息内容',
+                        '定位时长（ms）'
+                    ]
+                });
+                let blob = new Blob([csv]);
+
+                let element = document.createElement('a');
+                element.download = !isReport ? 'export.csv' : '测试报告.csv';
+                element.style.display = 'none';
+                element.href = URL.createObjectURL(blob);
+
+                document.body.appendChild(element);
+                element.click();
+                document.body.removeChild(element);
+            }
+        }
+    });
+</script>
+</body>
+</html>
